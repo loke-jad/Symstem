@@ -1,6 +1,0 @@
-{
-  "name": "Symstem",
-  "description": "A privacy-first, local-first loop-based music studio. Collaborate with an AI band to generate verifed stems, arrange them on a channel rack, and export lossless trackpacks.",
-  "requestFramePermissions": ["camera"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
