@@ -1,0 +1,8 @@
+{
+  "name": "Symstem",
+  "description": "An interactive digital audio stem sandbox and AI-powered music workstation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
