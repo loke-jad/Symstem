@@ -1,0 +1,236 @@
+<header class="transport" data-screen-label="Transport">
+  <a class="brand" href="/" style="text-decoration:none;color:inherit">
+    <svg viewBox="0 0 64 64" role="img" aria-label="Symstem">
+      <rect x="6" y="6" width="52" height="52" rx="15" fill="var(--sky)"/>
+      <path d="M32 18 a14 14 0 1 1 -13.6 17.4" fill="none" stroke="var(--surface)" stroke-width="7.5" stroke-linecap="round"/>
+      <path d="M30 11 l9 7 -9 7 z" fill="var(--surface)"/>
+    </svg>
+    <span class="word"><span class="wm-sym">SYM</span><span class="wm-stem">STEM</span></span>
+  </a>
+  <span class="t-title">{{ spec()?.title || 'Untitled Loop' }} — <strong>saved on this device</strong></span>
+  <span class="t-spacer"></span>
+  
+  @if (bricks().length > 0 && !isGenerating()) {
+    <div style="display: flex; gap: var(--sp-2); margin-right: var(--sp-4);">
+      <button class="theme-btn" (click)="undo()" [disabled]="history().length === 0" aria-label="Undo" style="font-weight: var(--fw-bold);" [style.opacity]="history().length === 0 ? '0.5' : '1'">↩</button>
+      <button class="theme-btn" (click)="redo()" [disabled]="future().length === 0" aria-label="Redo" style="font-weight: var(--fw-bold);" [style.opacity]="future().length === 0 ? '0.5' : '1'">↪</button>
+    </div>
+    <button class="theme-btn" (click)="exportWav()">Mixdown (.wav)</button>
+    <button class="theme-btn" (click)="exportTrackpack()">Trackpack (.zip)</button>
+    <button class="theme-btn legendairy-btn" (click)="startCollab()" [attr.data-tier]="'legendairy'">Stream / Collab</button>
+  }
+
+  <button class="play-btn" id="playBtn" [attr.aria-pressed]="isPlaying()" (click)="play()">
+    <span class="glyph" id="playGlyph">{{ isPlaying() ? '■' : '▶' }}</span>
+    <span id="playLbl">{{ isPlaying() ? 'Stop' : 'Play' }}</span>
+  </button>
+  <div class="t-readout">
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <button class="theme-btn" (click)="tapTempo()" [disabled]="!spec()" aria-label="Tap Tempo" style="font-size: 10px; padding: 2px 6px;">TAP</button>
+      <input type="range" class="bpm-slider" min="60" max="200" [value]="spec()?.bpm || 120" (input)="updateBpm($event)" [disabled]="!spec()" aria-label="BPM Slider" style="width: 80px; accent-color: var(--sky);">
+      <span class="t-pill" style="min-width: 60px; text-align: center;">{{ spec()?.bpm || 120 }} BPM</span>
+    </div>
+    <span class="t-pill">{{ spec()?.key || 'C MIN' | uppercase }}</span>
+    <span class="t-pill bars">24 BARS</span>
+  </div>
+  <div class="eq-container">
+    <canvas #eqCanvas width="80" height="24" class="eq-canvas" aria-label="Audio equalizer"></canvas>
+  </div>
+  <div class="beatpulse" aria-label="Visual metronome, 4 beats">
+    <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+  </div>
+  <button class="theme-btn" id="themeBtn" (click)="toggleTheme()">
+    ◑ {{ theme() === 'midnight' ? 'Paper Score' : 'Midnight' }}
+  </button>
+</header>
+
+<div class="studio" [class.playing]="isPlaying()">
+  <div class="main-col">
+    <div class="comp-scroll" data-screen-label="Composition Window">
+      <div class="lanes" id="lanes">
+        <div class="playhead" #playheadInfo aria-hidden="true"></div>
+        @for (lane of lanes; track lane) {
+          <div class="lane">
+            <div class="gutter">
+              <span class="g-code">
+                <span class="ic" [style.color]="'var(--inst-' + lane + ')'" [innerHTML]="icons[instruments[lane].icon]"></span>
+                {{ instruments[lane].code }}
+              </span>
+              <span class="g-name">{{ instruments[lane].role }}</span>
+              <div class="meter" role="img" [attr.aria-label]="instruments[lane].role + ' level meter'">
+                <div class="m-fill" [style.--inst]="'var(--inst-' + lane + ')'" [style.--mdur]="instruments[lane].mdur" [style.--mpeak]="instruments[lane].mpeak"></div>
+              </div>
+            </div>
+            <div class="field" [attr.data-inst]="lane">
+              @for (b of getBricksForLane(lane); track b.id) {
+                <button 
+                  class="brick"
+                  [class.bleed]="!b.verified_stem"
+                  [class.muted]="b.muted"
+                  [class.soloed]="b.solo"
+                  [id]="'brick-' + b.id" 
+                  [style]="getBrickStyle(b)"
+                  [attr.aria-pressed]="selectedBrickId() === b.id" 
+                  (click)="selectBrick(b.id)"
+                  [attr.aria-label]="b.name + ' \u2014 ' + instruments[lane].role + ' brick, volume ' + (b.params.gain*100 | number:'1.0-0') + ', ' + b.bpm + ' BPM'">
+                  <span class="tex-tempo"></span><span class="tex-pitch"></span><span class="tex-grain"></span>
+                  <span class="b-body">
+                    <span class="b-top">
+                      <span class="b-id">
+                        <span class="ic" [innerHTML]="icons[instruments[lane].icon]"></span>
+                        <span class="code">{{ instruments[lane].code }}</span>
+                      </span>
+                      <span class="b-chip">{{ !b.verified_stem ? '⚠ BLEED' : '✓ STEM' }}</span>
+                    </span>
+                    <span class="b-name">{{ b.name }}</span>
+                    <span class="b-row">
+                      <span class="b-badge" data-r="vol">VOL {{ b.params.gain*100 | number:'1.0-0' }}</span>
+                      <span class="b-badge" data-r="bpm">{{ b.bpm }} BPM</span>
+                      <span class="b-badge">{{ b.bars }} BAR</span>
+                    </span>
+                  </span>
+                </button>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+    <div class="chat-dock" data-screen-label="Chat Dock">
+      <div class="chat-messages">
+        @for (msg of chatHistory(); track msg.id) {
+          <div class="chat-msg" [class.user]="msg.role === 'user'">
+            <span class="role-lbl">{{ msg.role === 'user' ? 'YOU' : 'PRODUCER' }}</span>
+            <p [innerHTML]="msg.text"></p>
+          </div>
+        }
+      </div>
+      <form class="chat-row" (submit)="askBand($event)">
+        <input type="text" [formControl]="promptCtrl" id="chatInput" placeholder="Describe a track — “dusty house, warm keys, lazy hats…”" aria-label="Describe a track" [disabled]="isGenerating()">
+        <button type="submit" id="chatBtn" [disabled]="isGenerating()">Make loops</button>
+      </form>
+    </div>
+  </div>
+  <aside class="inspector" id="inspector" data-screen-label="Loop Lab" aria-label="Loop Lab">
+    <div class="ins-topbar">
+      <h2>Loop Lab</h2>
+      <div class="depth-tabs">
+        <button [class.active]="loopLabTab() === 'L1'" (click)="loopLabTab.set('L1')">L1</button>
+        <button [class.active]="loopLabTab() === 'L2'" (click)="loopLabTab.set('L2')">L2</button>
+        <button [class.active]="loopLabTab() === 'L3'" (click)="loopLabTab.set('L3')">L3</button>
+      </div>
+    </div>
+    
+    @if (selectedBrick()) {
+      <div class="ins-head">
+        <span class="dot" [style.background]="'var(--inst-' + selectedBrick().color + ')'"></span>
+        <span class="nm">{{ selectedBrick().name }}</span>
+        <span style="flex:1"></span>
+        <button class="theme-btn" style="padding: 2px 8px; font-size: 10px;" (click)="deleteBrick(selectedBrick().id)">Delete</button>
+      </div>
+      <div class="ins-sub">{{ selectedBrick().instrument }}</div>
+      <span class="ins-status" [class.bleed]="!selectedBrick().verified_stem">
+        {{ !selectedBrick().verified_stem ? '⚠ BLEED — we couldn\u2019t fully isolate this stem' : '✓ STEM — verified isolated stem' }}
+      </span>
+
+      @if (loopLabTab() === 'L1') {
+        <div class="ctl">
+          <div class="lbl">Piano Roll (L1)</div>
+          <div class="placeholder-box">MIDI notes and note-level sequencing will appear here.</div>
+        </div>
+      }
+      @if (loopLabTab() === 'L2') {
+        <div style="display: flex; gap: var(--sp-2); margin-bottom: var(--sp-4);">
+          <button class="theme-btn" [style.background]="selectedBrick().muted ? 'var(--bleed)' : ''" [style.color]="selectedBrick().muted ? 'white' : ''" (click)="toggleMute(selectedBrick().id)" style="flex:1">Mute</button>
+          <button class="theme-btn" [style.background]="selectedBrick().solo ? 'var(--verified)' : ''" [style.color]="selectedBrick().solo ? 'var(--bg-sunk)' : ''" (click)="toggleSolo(selectedBrick().id)" style="flex:1">Solo</button>
+        </div>
+        <div class="ctl">
+          <label for="ctl-vol">Volume <span class="val" id="vol-val">{{ selectedBrick().params.gain*100 | number:'1.0-0' }}</span></label>
+          <input type="range" id="ctl-vol" min="0" max="100" [value]="selectedBrick().params.gain*100" (change)="updateVolume($event, selectedBrick().id)">
+          <p class="hint">brightness = volume — watch the brick</p>
+        </div>
+        <div class="ctl">
+          <label for="ctl-pitch">Pitch (Semitones) <span class="val" id="pitch-val">{{ (selectedBrick().params.pitch || 0) | number:'1.0-0' }}</span></label>
+          <input type="range" id="ctl-pitch" min="-12" max="12" [value]="selectedBrick().params.pitch || 0" (change)="updatePitch($event, selectedBrick().id)">
+          <p class="hint">Shift playback pitch algorithmically</p>
+        </div>
+        <div class="ctl">
+          <label>Volume Automation</label>
+          <div class="automation-editor" style="height: 100px; background: var(--bg-deep); border: 1px solid var(--border); border-radius: var(--r-sm); position: relative; overflow: hidden; cursor: crosshair; user-select: none;"
+               (mousedown)="startAutoNode($event)" (mousemove)="moveAutoNode($event)" (mouseup)="endAutoNode()" (mouseleave)="endAutoNode()">
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="width: 100%; height: 100%; overflow: visible;" xmlns="http://www.w3.org/2000/svg">
+              <polyline [attr.points]="getAutoPoints(selectedBrick().id)" fill="none" stroke="var(--sky)" stroke-width="2" />
+              @for (pt of getAutoNodes(selectedBrick().id); track i; let i = $index) {
+                <circle [attr.cx]="pt.x * 100" [attr.cy]="100 - pt.y * 100" r="4" fill="var(--sky)" stroke="#fff" stroke-width="1"
+                        (mousedown)="$event.stopPropagation(); grabAutoNode(i, selectedBrick().id)" 
+                        (dblclick)="$event.stopPropagation(); removeAutoNode(i, selectedBrick().id)" style="cursor: pointer;" />
+              }
+            </svg>
+          </div>
+          <p class="hint">Click to add node. Drag to move. Double-click to remove node.</p>
+        </div>
+      }
+      @if (loopLabTab() === 'L3') {
+        <div class="ctl">
+          <div class="lbl">Conversational Edits (L3)</div>
+          <div class="placeholder-box">Chat with the Loop Agent to apply edits ("make it dirtier", "add some swing").</div>
+        </div>
+      }
+
+      <div class="ins-meta">
+        <div class="cell"><div class="k">Key</div><div class="v">{{ selectedBrick().key | uppercase }}</div></div>
+        <div class="cell"><div class="k">Length</div><div class="v">{{ selectedBrick().bars }} BAR</div></div>
+      </div>
+      <div class="reviewer">
+        <div class="who">REVIEWER AGENT — never says “Strong Buy”</div>
+        <p>“It works. It loops. That’s the job.”</p>
+      </div>
+    } @else {
+      <div class="ins-empty">Select a brick to read it — or just look: bright is loud, streaked is fast, dashed means bleed.</div>
+    }
+  </aside>
+</div>
+
+@if (showLegendairyModal()) {
+  <div class="modal-overlay">
+    <div class="modal collab-modal">
+      <div class="modal-header">
+        <h2>Legendairy Workspace</h2>
+        <button class="icon-btn" (click)="showLegendairyModal.set(false)" aria-label="Close">✕</button>
+      </div>
+      
+      @if (!isVerified18Plus()) {
+        <div class="proof-gate">
+          <h3>Age Verification Required</h3>
+          <p>Legendairy collaboration features and explicit generator limits are restricted. Please verify your age securely to proceed.</p>
+          <div class="proof-box">
+             <div class="proof-icon">🛂</div>
+             <div class="proof-info">
+               <strong>Proof ID verification (Test Mode)</strong>
+               <p>This is a simulated verification flow.</p>
+             </div>
+             <button class="proof-btn theme-btn" (click)="verifyAge()">Verify with Proof</button>
+          </div>
+        </div>
+      } @else {
+        <div class="collab-active">
+          <div class="collab-header">
+            <h3>🔴 Live Collaboration Session</h3>
+            <p>CRDT Sync Active. Others can join via loopster-tunnel.</p>
+          </div>
+          <div class="collab-features">
+             <div class="market-box">
+               <h4>Marketplace Routing (Stripe Connect)</h4>
+               <p>If another producer forks this loop and monetizes it, you receive a dynamic share.</p>
+               <button class="theme-btn" (click)="testStripeCheckout()" style="background:var(--sky); color:var(--surface);">Test Stripe Checkout (Mock)</button>
+             </div>
+             <div class="video-streams">
+                <div class="cam-box"><video id="localCam" autoplay muted playsinline></video></div>
+                <div class="cam-box empty"><span class="cam-fallback">Waiting for others...</span></div>
+             </div>
+          </div>
+        </div>
+      }
+    </div>
+  </div>
+}
